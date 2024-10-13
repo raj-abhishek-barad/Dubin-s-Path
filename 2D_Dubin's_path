@@ -1,0 +1,744 @@
+import math
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import matplotlib.animation as animation
+import numpy as np
+
+# x1 is the initial heading.
+# x3 is the final heading.
+x1=(math.pi/3)
+x3=0
+
+initial_coords=(-52,-21, x1)
+(x0,y0,chi0)=initial_coords
+final_orientation=math.pi/2 + x3
+radius=5
+xf=0
+# chi0 = initial_orientation
+chif = final_orientation
+min_radius=radius
+
+# def calculate_centers(initial_coords, initial_orientation, final_coords, final_orientation, radius):
+#     x0, y0 = initial_coords
+#     xf, yf = final_coords
+#     chi0 = initial_orientation
+#     chif = final_orientation
+
+#     center_first = (x0 + radius * math.cos(chi0), y0 - radius * math.sin(chi0))
+#     center_second = (xf - radius * math.cos(chif), yf + radius * math.sin(chif))
+
+#     return center_first, center_second
+
+
+def tan_coor(center_first, center_second, radius1, radius2):
+    # centers=calculate_centers(initial_coords, initial_orientation, final_coords, final_orientation, radius)
+    # center_first=centers[1]
+    # center_second=centers[2]
+    x1, y1 = center_first
+    x2, y2 = center_second
+
+    x11 = x2 - x1
+    y11 = y2 - y1
+
+    D = ((x11) ** 2 + (y11) ** 2)
+    D_=math.sqrt(D)
+    cos_theta = (radius1 - radius2) / D
+    sin_theta = math.sqrt(D - (radius1 - radius2) ** 2)/D
+
+    left_ux = -x11 * cos_theta - y11 * sin_theta
+    left_uy = -y11 * cos_theta + x11 * sin_theta
+
+    right_ux = -x11 * cos_theta + y11 * sin_theta
+    right_uy = -y11 * cos_theta - x11 * sin_theta
+
+    left_x_1 = x1 - left_ux * radius1
+    left_y_1 = y1 + left_uy * radius1
+
+    left_x_2 = x2 + left_ux * radius2
+    left_y_2 = y2 - left_uy * radius2
+
+    right_x_1 = x1 - right_ux * radius1
+    right_y_1 = y1 + right_uy * radius1
+
+    right_x_2 = x2 + right_ux * radius2  #+ gives good result for LSL
+    right_y_2 = y2 + right_uy * radius2
+
+    return ([left_x_1, left_y_1, right_x_1, right_y_1], [left_x_2, left_y_2, right_x_2, right_y_2])
+
+# centers=calculate_centers(initial_coords, initial_orientation, final_coords, final_orientation, min_radius)
+# print("CENTERS:",centers)
+# tangentwala=tan_coor(center_first, center_second, radius1, radius2)
+def lr_generate(vector, min_radius):
+    x, y, theta = vector
+    left_angle = theta - math.pi / 2
+    right_angle = -math.pi / 2 - theta
+    ##dffferent case
+    left_circle_x = x + min_radius * math.cos(left_angle)
+    left_circle_y = y + min_radius * math.sin(left_angle)
+    ##1st case
+    right_circle_x = x + min_radius * math.cos(right_angle)
+    right_circle_y = y - min_radius * math.sin(right_angle)
+    # left_angle = theta - math.pi / 2
+    # right_angle = -math.pi / 2 - theta
+
+    # left_circle_x = x - min_radius*math.cos(left_angle)
+    # left_circle_y = y - min_radius*math.sin(left_angle)
+    # right_circle_x = x + min_radius*math.cos(right_angle)
+    # right_circle_y = y + min_radius*math.sin(right_angle)
+    
+    return left_circle_x, left_circle_y, right_circle_x, right_circle_y
+
+def cal_angle(start, tangent, center, turn, min_radius):
+    vector1_x = start[0] - center[0]
+    vector1_y = start[1] - center[1]
+    vector2_x = tangent[0] - center[0]
+    vector2_y = tangent[1] - center[1]
+
+    theta = math.atan2(vector2_y, vector2_x) - math.atan2(vector1_y, vector1_x)
+    if theta < 0 and turn == 'l':
+        theta = theta + 2 * math.pi
+    elif theta > 0 and turn == 'r':
+        theta = theta - 2 * math.pi
+    return abs(theta), math.atan2(vector1_y, vector1_x), math.atan2(vector2_y, vector2_x)
+
+def classify_path(xf, x0, radius):
+    if (xf - x0) > 4 * radius:
+        return 'LP'
+    elif 2 * radius < (xf - x0) < 4 * radius:
+        return 'MP'
+    elif radius < (xf - x0) < 2 * radius:
+        return 'SP'
+    elif 0 < (xf - x0) < radius:
+        return 'VSP'
+    else:
+        return 'unknown'
+#######################################
+def get_quadrant(chi0):
+    if 0 <= chi0 < math.pi / 2:
+        return 1
+    elif math.pi / 2 <= chi0 < math.pi:
+        return 2
+    elif math.pi <= chi0 < 3 * math.pi / 2:
+        return 3
+    else:
+        return 4
+
+class VALUE:
+    def __init__(self, x0, y0, chi0, min_radius):
+        self.x0 = x0
+        self.y0 = y0
+        self.chi0 = chi0
+        self.min_radius = min_radius
+
+    def gamma_1a(self):
+        return math.acos((self.x0 + self.min_radius + self.min_radius*math.cos(self.chi0))/2*self.min_radius)
+
+    def gamma_2a(self):
+        return -math.acos((-self.x0 + self.min_radius + self.min_radius*math.cos(self.chi0))/2*self.min_radius)
+
+    def gamma_1b(self):
+        return -math.pi + math.acos(((-self.x0 - self.min_radius - self.min_radius*math.cos(self.chi0))/2*self.min_radius))
+
+    def chi_011(self):
+        return math.acos((-self.x0 - self.min_radius)/self.min_radius)
+
+    def chi_012(self):
+        return math.acos((self.x0 + self.min_radius)/self.min_radius)
+
+    def chi_021(self):
+        return -math.acos(((-self.x0 - self.min_radius)/self.min_radius))
+
+    def chi_031(self):
+        return -math.pi + math.acos(((-self.x0 - self.min_radius)/self.min_radius))
+
+    def chi_032(self):
+        return -math.pi + math.acos((self.x0 + self.min_radius)/self.min_radius)
+
+    def chi_041(self):
+        return math.pi - math.acos(((-self.x0 - self.min_radius)/self.min_radius))
+
+    def l_11(self):
+       
+        return (math.pi - self.chi0)*self.min_radius - self.x0 - self.min_radius*(1+math.cos(self.chi0))
+        # print("******:",math.pi - self.chi0)*self.min_radius - self.x0 - self.min_radius*(1+math.cos(self.chi0))
+
+    def l_15(self):
+        return (math.pi/2)*self.min_radius - self.x0 - self.min_radius
+
+    def y_11(self):
+        return self.y0 - self.min_radius*math.sin(self.chi0) + 2*self.min_radius
+    
+    def y_21(self):
+        
+        return self.y0 - self.min_radius*math.sin(self.chi0) + 2*self.min_radius
+
+
+
+    def y_15(self):
+        return self.y0 + self.min_radius
+
+    def l1_12(self):
+        return (2*self.gamma_1a() - self.chi0)*self.min_radius
+
+    def l1_13(self):
+        return (-2*self.gamma_2a() + self.chi0)*self.min_radius
+
+    
+    def l_10(self):
+        return self.min_radius*self.chi_012()
+
+
+    def l_21(self):
+        return (math.pi - self.chi0)*self.min_radius - self.x0 - self.min_radius*(1+math.cos(self.chi0))
+    
+
+    def l2_32(self):
+        return (2*self.gamma_1b() + 2*self.min_radius - self.chi0)*self.min_radius
+
+    def l1_32(self):
+        return (2*self.gamma_1a() - self.chi0)*self.min_radius
+
+    def l_34(self):
+        return (2*math.pi + self.chi0)*self.min_radius - self.x0 - self.min_radius*(1-math.cos(self.chi0))
+
+    def l_30(self):
+        return (2*math.pi + self.chi_031())*self.min_radius
+
+    def l_40(self):
+        return self.chi_031()*self.min_radius
+
+    def l_44(self):
+        return self.chi0*self.min_radius - self.min_radius - self.x0 + self.min_radius*math.cos(self.chi0)
+
+    def l1_43(self):
+        return (self.chi0-2*self.gamma_2a())*self.min_radius
+
+    def y_10(self):
+        return self.y0 + self.min_radius*math.sin(self.chi_012())
+
+    def y_11(self):
+        return self.y0 - self.min_radius*math.sin(self.chi0) + 2*self.min_radius
+
+    def y_12(self):
+        return self.y0 - self.min_radius*math.sin(self.chi0) + 2*self.min_radius*math.sin(self.gamma_1a())
+
+    def y_13(self):
+        return self.y0 + self.min_radius*math.sin(self.chi0) - 2*self.min_radius*math.sin(self.gamma_1a())
+
+    def y1_12(self):
+        return self.y0 - self.min_radius*math.sin(self.chi0) +2*self.min_radius*math.sin(self.gamma_1a())
+    
+    def y2_32(self):
+        return self.y0 - self.min_radius*math.sin(self.chi0) + 2*self.min_radius*math.sin(self.gamma_1b())
+
+    def y1_32(self):
+        return self.y0 - self.min_radius*math.sin(self.chi0) + 2*self.min_radius*math.sin(self.gamma_1a())
+
+    def y_34(self):
+        return self.y0 + self.min_radius*math.sin(self.chi0)
+
+    def y_30(self):
+        return self.y0 + self.min_radius*math.sin(self.chi_031())
+    
+
+    def y_40(self):
+        return self.y0 + self.min_radius*math.sin(self.chi_041())
+
+    def y_44(self):
+        return self.y0 + self.min_radius*math.sin(self.chi0)
+
+    def y1_43(self):
+        return self.y0 + self.min_radius*math.sin(self.chi0) - 2*self.min_radius*math.sin(self.gamma_2a())
+
+
+# # Create an instance of the class with appropriate values for y0, min_radius, and chi0
+# instance = VALUE(x0=-22, y0=-10,chi0=math.pi/3,min_radius=5)
+
+# # Call the y_21 method and print the result
+# print("^^^^^^^^^^^^^^^^", instance)
+
+VAL = VALUE(x0=x0, y0=y0, chi0=chi0, min_radius=min_radius)  # Create an instance of the VAL class
+
+def find_optimal_path(x0, y0, chi0, xf, radius):
+    quadrant = get_quadrant(chi0)
+    optimal_path = []
+
+    for i in range(quadrant, quadrant + 1):
+        P = classify_path(xf, x0, radius)
+        # print("P:", P)
+        if quadrant == 1:
+            if P == 'LP':
+                if chi0 == math.pi / 2:
+                    return VAL.y_15(), [VAL.l_15(), VAL.y_15(), 'SL']
+                else:
+                    return VAL.y_11(), [VAL.l_11(), VAL.y_11(), 'RSL']
+            elif P == 'MP':
+                if chi0 == math.pi / 2:
+                    return VAL.y_15(), [VAL.l_15(), VAL.y_15(), 'SL']
+                else:
+                    return VAL.y_11(), [VAL.l_11(), VAL.y_11(), 'RSL']
+            elif P == 'SP':
+                if chi0 > VAL.chi_011() and chi0 != math.pi / 2:
+                    return VAL.y_11(), [VAL.l_11(), VAL.y_11(), 'RSL']
+                elif chi0 == math.pi / 2:
+                    return VAL.y_15(), [VAL.l_15(), VAL.y_15(), 'SL']
+                else:
+                    return VAL.y1_12(), [VAL.l1_12(), VAL.y1_12(), 'RL']
+            elif P == 'VSP':
+                if chi0 < VAL.chi_012():
+                    return VAL.y1_12(), [VAL.l1_12(), VAL.y1_12(), 'RL']
+                elif chi0 == VAL.chi_012():
+                    return VAL.y_10(), [VAL.l_10(), VAL.y_10(), 'L']
+                else:
+                    return VAL.y1_13(), [VAL.l1_13(), VAL.y1_13(), 'LR']
+                    
+        elif quadrant == 2:
+            if P == 'LP':
+                return VAL.y_21(), [VAL.l_21(), VAL.y_21(), 'RSL']
+            elif P == 'MP':
+                return VAL.y_21(), [VAL.l_21(), VAL.y_21(), 'RSL']
+            elif P == 'SP':
+                if chi0 < VAL.chi_021():
+                    return VAL.y_21(), [VAL.l_21(), VAL.y_21(), 'RSL']
+                else:
+                    return VAL.y1_21(), [VAL.l1_21(), VAL.y1_21(), 'RL']
+            elif P == 'VSP':
+                return VAL.y1_22(), [VAL.l1_22(), VAL.y1_22(), 'RL']
+                
+        elif quadrant == 3:
+            if P == 'LP':
+                return VAL.y_34(), [VAL.l_34(), VAL.y_34(), 'LSL']
+            elif P == 'MP':
+                return VAL.y_34(), [VAL.l_34(), VAL.y_34(), 'LSL']
+            elif P == 'SP':
+                if chi0 > VAL.chi_031():
+                    return VAL.y_34(), [VAL.l_34(), VAL.y_34(), 'LSL']
+                elif chi0 == VAL.chi_031():
+                    return VAL.y_30(), [VAL.l_30(), VAL.y_30(), 'L']
+                else:
+                    return VAL.y2_32(), [VAL.l2_32(), VAL.y2_32(), 'RL']
+            elif P == 'VSP':
+                if chi0 < VAL.chi_032():
+                    return VAL.y2_32(), [VAL.l2_32(), VAL.y12_32(), 'RL']
+                elif chi0 >= VAL.chi_032():
+                    return VAL.y1_32(), [VAL.l1_32(), VAL.y1_32(), 'RL']
+                    
+        elif quadrant == 4:
+            if P == 'LP':
+                return VAL.y_44(), [VAL.l_44(), VAL.y_44(), 'LSL']
+            elif P == 'MP':
+                return VAL.y_44(), [VAL.l_44(), VAL.y_44(), 'LSL']
+            elif P == 'SP':
+                if chi0 < VAL.chi_041():
+                    return VAL.y_44(), [VAL.l_44(), VAL.y_44(), 'LSL']
+                elif chi0 == VAL.chi_041():
+                    return VAL.y_40(), [VAL.l_40(), VAL.y_40(), 'L']
+                else:
+                    return VAL.y1_43(), [VAL.l1_43(), VAL.y1_43(), 'RL']
+            elif P == 'VSP':
+                return VAL.y1_43(), [VAL.l1_43(), VAL.y1_43(), 'LR']
+
+yf, optimal_path_type = find_optimal_path(x0, y0, chi0, xf, radius)
+final_coords = (xf, yf,final_orientation) 
+_,_,opt_path_type=optimal_path_type
+print("Final coordinates are: ", final_coords)
+print("Optimal path is: ", optimal_path_type)
+
+
+# value=VALUE(x0=-22, y0=-10,chi0=math.pi/3,min_radius=5)
+
+def RSL(start, goal, min_radius):
+    cost = None
+    s_right_x, s_right_y, left_x, left_y = lr_generate(start, min_radius)
+    right_x, right_y, g_left_x, g_left_y = lr_generate(goal, min_radius)
+
+    start_tan, goal_tan = tan_coor((s_right_x, s_right_y), (g_left_x, g_left_y), min_radius, min_radius)
+    ang_1, s_ang_1, e_ang_1 = cal_angle((start[0], start[1]), (start_tan[0], start_tan[1]), (s_right_x, s_right_y), 'r', min_radius)
+    ang_2, s_ang_2, e_ang_2 = cal_angle((goal[0], goal[1]), (goal_tan[2], goal_tan[3]), (g_left_x, g_left_y), 'l', min_radius)
+
+    # cost = ((abs(s_ang_1 - e_ang_1) / 360) + (abs(s_ang_2 - e_ang_2) / 360)) * 2 * math.pi * min_radius + (start_tan[0] - goal_tan[2]) ** 2 + (start_tan[1] - goal_tan[3]) ** 2
+    k=classify_path(xf,x0,min_radius)
+    i=get_quadrant(chi0)
+
+    if k=='LP':
+      if chi0!=math.pi/2:
+             if i==1:
+              cost= VAL.l_11
+             elif i==2:
+              cost= VAL.l_21
+
+             else:
+               pass     
+      else :
+        pass
+
+
+    elif k=='MP':
+      if chi0!=math.pi/2:
+             if i==1:
+              cost= VAL.l_11()
+             elif i==2:
+              cost= VAL.l_21()
+             else:
+               pass     
+      else:
+          pass
+     
+    elif k=='SP':
+      if i==1:
+          if chi0>VAL.chi_011():
+             cost= VAL.l_11  
+          else:
+              pass
+      elif i==2:
+          if  chi0<VAL.chi_021():
+             cost= VAL.l_21
+          else:
+              pass
+          
+    else:
+      pass
+        
+    return (cost, (s_right_x, s_right_y, g_left_x, g_left_y), (s_ang_1, e_ang_1, start_tan[0], start_tan[1]), (s_ang_2, e_ang_2, goal_tan[2], goal_tan[3]), 'RSL')
+
+def LSL(start, goal, min_radius):
+    s_right_x, s_right_y, left_x, left_y = lr_generate(start, min_radius)
+    right_x, right_y, g_left_x, g_left_y = lr_generate(goal, min_radius)
+    cost = None
+    start_tan, goal_tan = tan_coor((left_x, left_y), (g_left_x, g_left_y), min_radius, min_radius)
+    ang_1, s_ang_1, e_ang_1 = cal_angle((start[0], start[1]), (start_tan[2], start_tan[3]), (left_x, left_y), 'l', min_radius)
+    ang_2, s_ang_2, e_ang_2 = cal_angle((goal[0], goal[1]), (goal_tan[2], goal_tan[3]), (g_left_x, g_left_y), 'l', min_radius)
+
+
+    i = get_quadrant(chi0)
+    k = classify_path(xf, x0, min_radius)
+    if k == 'LP':
+        if i == 3:
+            cost = VAL.l_34()
+        elif i == 4:
+            cost = VAL.l_44()
+        else:
+            pass
+
+    elif k == 'MP':
+        if i == 3:
+            cost = VAL.l_34()
+        elif i == 4:
+            cost = VAL.l_44()
+        else:
+            pass
+
+    elif k == 'SP':
+        if i == 3:
+            if chi0 > VAL.chi_031():
+                cost = VAL.l_34()
+            else:
+                pass
+        elif i == 4:
+            if chi0 < VAL.chi_041():
+                cost = VAL.l_44()
+            else:
+                pass
+    else:
+        pass
+
+    return (cost, (left_x, left_y, g_left_x, g_left_y), (e_ang_1, s_ang_1, start_tan[2], start_tan[3]), (s_ang_2, e_ang_2, goal_tan[2], goal_tan[3]), 'LSL')
+# def RSR(start, goal, min_radius):
+#     s_right_x, s_right_y, left_x, left_y = lr_generate(start, min_radius)
+#     right_x, right_y, g_left_x, g_left_y = lr_generate(goal, min_radius)
+
+#     start_tan, goal_tan = tan_coor((s_right_x, s_right_y), (right_x, right_y), min_radius, min_radius)
+#     ang_1, s_ang_1, e_ang_1 = cal_angle((start[0], start[1]), (start_tan[0], start_tan[1]), (s_right_x, s_right_y), 'r', min_radius)
+#     ang_2, s_ang_2, e_ang_2 = cal_angle((goal[0], goal[1]), (goal_tan[0], goal_tan[1]), (right_x, right_y), 'r', min_radius)
+
+#     cost = ((abs(s_ang_1 - e_ang_1) / 360) + (abs(s_ang_2 - e_ang_2) / 360)) * 2 * math.pi * min_radius + (start_tan[0] - goal_tan[0]) ** 2 + (start_tan[1] - goal_tan[1]) ** 2
+
+#     return (cost, (s_right_x, s_right_y, right_x, right_y), (s_ang_1, e_ang_1, start_tan[0], start_tan[1]), (e_ang_2, s_ang_2, goal_tan[0], goal_tan[1]), 'RSR')
+
+# def LSR(start, goal, min_radius):
+#     cost= 0
+#     s_right_x, s_right_y, left_x, left_y = lr_generate(start, min_radius)
+#     right_x, right_y, g_left_x, g_left_y = lr_generate(goal, min_radius)
+
+#     start_tan, goal_tan = tan_coor((left_x, left_y), (right_x, right_y), min_radius, min_radius)
+#     ang_1, s_ang_1, e_ang_1 = cal_angle((start[0], start[1]), (start_tan[2], start_tan[3]), (left_x, left_y), 'l', min_radius)
+#     ang_2, s_ang_2, e_ang_2 = cal_angle((goal[0], goal[1]), (goal_tan[2], goal_tan[3]), (right_x, right_y), 'r', min_radius)
+
+#     cost = ((abs(s_ang_1 - e_ang_1) / 360) + (abs(s_ang_2 - e_ang_2) / 360)) * 2 * math.pi * min_radius + (start_tan[2] - goal_tan[2]) ** 2 + (start_tan[3] - goal_tan[3]) ** 2
+
+#     return (cost, (left_x, left_y, right_x, right_y), (s_ang_1, e_ang_1, start_tan[2], start_tan[3]), (e_ang_2, s_ang_2, goal_tan[2], goal_tan[3]), 'LSR')
+
+def L(start, goal, min_radius):
+    cost = None
+    s_left_x, s_left_y, right_x, right_y = lr_generate(start, min_radius)
+    left_x, left_y, g_right_x, g_right_y = lr_generate(goal, min_radius)
+
+    start_tan, goal_tan = tan_coor((right_x, right_y), (g_right_x, g_right_y), min_radius, min_radius)
+    ang_1, s_ang_1, e_ang_1 = cal_angle((start[0], start[1]), (start_tan[2], start_tan[3]), (right_x, right_y), 'l', min_radius)
+    ang_2, s_ang_2, e_ang_2 = cal_angle((goal[0], goal[1]), (goal_tan[2], goal_tan[3]), (g_right_x, g_right_y), 'l', min_radius)
+
+    # cost = ((abs(s_ang_1 - e_ang_1) / 360) + (abs(s_ang_2 - e_ang_2) / 360)) * 2 * math.pi * min_radius + (start_tan[2] - goal_tan[2]) ** 2 + (start_tan[3] - goal_tan[3]) ** 2
+    i=get_quadrant(chi0)
+    k=classify_path(xf,x0,min_radius)
+    if k=='SP':
+      if i==4:
+          cost=VAL.l_40()
+      elif i==3:
+          cost=VAL.l_30()
+      else:
+          pass
+
+    elif k=='VSP':
+      if i==1:
+          cost=VAL.l_10()
+      else:
+          pass
+          
+    else:
+      pass
+                
+    return (cost, (right_x, right_y, g_right_x, g_right_y), (e_ang_1, s_ang_1, start_tan[2], start_tan[3]), (e_ang_2, s_ang_2, goal_tan[2], goal_tan[3]), 'L')
+    
+
+
+
+def RL(start, goal, min_radius):
+    cost = None
+    s_right_x, s_right_y, left_x, left_y = lr_generate(start, min_radius)
+    right_x, right_y, g_left_x, g_left_y = lr_generate(goal, min_radius)
+
+    start_tan, goal_tan = tan_coor((s_right_x, s_right_y), (g_left_x, g_left_y), min_radius, min_radius)
+    ang_1, s_ang_1, e_ang_1 = cal_angle((start[0], start[1]), (start_tan[0], start_tan[1]), (s_right_x, s_right_y), 'r', min_radius)
+    ang_2, s_ang_2, e_ang_2 = cal_angle((goal[0], goal[1]), (goal_tan[2], goal_tan[3]), (g_left_x, g_left_y), 'l', min_radius)
+    i=get_quadrant(chi0)
+    k=classify_path(xf,x0,min_radius)
+
+
+
+    if k=='SP':
+      if chi0<=VAL.chi_011():
+             if i==1:
+              cost= VAL.l1_12()
+             elif i==2:
+              cost= VAL.l1_12()
+             else:
+               pass     
+      else:
+          pass
+     
+    elif k=='VSP':
+      if i==1:
+          if chi0<VAL.chi_012():
+             cost= VAL.l1_12()  
+          else:
+              pass
+      elif i==2:
+         cost= VAL.l1_12()
+      elif i==3:
+         if chi0<VAL.chi_032():
+           cost= VAL.l2_32()
+         else:
+           cost= VAL.l1_32()
+      else:
+          pass
+          
+          
+    else:
+      pass
+    
+
+    return (cost, (s_right_x, s_right_y, g_left_x, g_left_y), (s_ang_1, e_ang_1, start_tan[0], start_tan[1]), (s_ang_2, e_ang_2, goal_tan[2], goal_tan[3]), 'RL')
+
+
+def LR(start, goal, min_radius):
+    cost = None
+    s_right_x, s_right_y, left_x, left_y = lr_generate(start, min_radius)
+    right_x, right_y, g_left_x, g_left_y = lr_generate(goal, min_radius)
+
+    start_tan, goal_tan = tan_coor((left_x, left_y), (right_x, right_y), min_radius, min_radius)
+    ang_1, s_ang_1, e_ang_1 = cal_angle((start[0], start[1]), (start_tan[2], start_tan[3]), (left_x, left_y), 'l', min_radius)
+    ang_2, s_ang_2, e_ang_2 = cal_angle((goal[0], goal[1]), (goal_tan[0], goal_tan[1]), (right_x, right_y), 'r', min_radius)
+
+    # cost = ((abs(s_ang_1 - e_ang_1) / 360) + (abs(s_ang_2 - e_ang_2) / 360)) * 2 * math.pi * min_radius + (start_tan[2] - goal_tan[0]) ** 2 + (start_tan[3] - goal_tan[1]) ** 2
+    i=get_quadrant(chi0)
+    k=classify_path(xf,x0,min_radius)
+
+
+
+    if k=='SP':
+      if chi0<=VAL.chi_041():
+             if i==4:
+              cost= VAL.l1_43()
+             else:
+               pass     
+      else:
+          pass
+     
+    elif k=='VSP':
+      if i==1:
+          if chi0>VAL.chi_012():
+             cost= VAL.l1_13()  
+          else:
+              pass
+      else:
+          pass
+          
+          
+    else:
+      pass
+    return (cost, (left_x, left_y, right_x, right_y), (e_ang_1, s_ang_1, start_tan[2], start_tan[3]), (e_ang_2, s_ang_2, goal_tan[0], goal_tan[1]), 'LR')
+
+def SL(start, goal, min_radius):
+    cost = None
+    _, _, left_x, left_y = lr_generate(start, min_radius)
+    right_x, right_y, g_left_x, g_left_y = lr_generate(goal, min_radius)
+
+    # Compute tangent point directly from start to goal's left circle
+    start_tan = (goal[0], goal[1])
+    goal_tan = (g_left_x, g_left_y)
+
+    _, _, e_ang_1 = cal_angle((goal[0], goal[1]), (goal[0], goal[1]), (g_left_x, g_left_y), 'l', min_radius)
+
+    # Straight line distance from start to goal tangent point
+    straight_line_distance = math.sqrt((start[0] - goal_tan[0]) ** 2 + (start[1] - goal_tan[1]) ** 2)
+    # cost = straight_line_distance + (abs(0 - e_ang_1) / 360) * 2 * math.pi * min_radius
+    k=classify_path(xf,x0,min_radius)
+    i=get_quadrant(chi0)
+    if k=='LP':
+      if chi0==math.pi/2:
+             if i==1:
+              cost= VAL.l_15
+             else:
+               pass     
+      else :
+        pass
+
+
+    elif k=='MP':
+      if chi0==math.pi/2:
+             if i==1:
+              cost= VAL.l_15
+             else:
+               pass     
+      else :
+        pass
+     
+    elif k=='SP':
+      if i==1:
+          if chi0==math.pi/2:
+             cost= VAL.l_15  
+          else:
+              pass
+      else:
+          pass
+    else:
+      pass
+    return (cost, (goal_tan[0], goal_tan[1]), (start[0], start[1], goal_tan[0], goal_tan[1]), (0, e_ang_1, goal_tan[0], goal_tan[1]), 'SL')
+
+
+
+print("optimal path type:",optimal_path_type)
+start=initial_coords
+goal=final_coords
+
+def select_optimal_path(start, goal, min_radius):
+    if optimal_path_type[2] == 'RSL':
+        optimal_path = RSL(start, goal, min_radius)
+    elif optimal_path_type[2] == 'SL':
+        optimal_path = SL(start, goal, min_radius)
+    elif optimal_path_type[2] == 'LR':
+        optimal_path = LR(start, goal, min_radius)
+    elif optimal_path_type[2] == 'L':
+        optimal_path = L(start, goal, min_radius)
+    elif optimal_path_type[2] == 'RL':
+        optimal_path = RL(start, goal, min_radius)
+    elif optimal_path_type[2] == 'LSL':
+        optimal_path = LSL(start, goal, min_radius)
+    else:
+        pass
+    return optimal_path
+
+def draw_arrow(ax, start_point, angle, length, color='black'):
+    angle_rad = np.deg2rad(angle)
+    end_point = (
+        start_point[0] + length * np.cos(angle_rad),
+        start_point[1] + length * np.sin(angle_rad)
+    )
+    ax.arrow(start_point[0], start_point[1], 
+             end_point[0] - start_point[0], 
+             end_point[1] - start_point[1], 
+             head_width=0.5, head_length=1, fc=color, ec=color)
+
+def create_arc(center, radius, start_point, end_point, num_points=100):
+    # Calculate start and end angles in radians
+    start_angle = math.atan2(start_point[1] - center[1], start_point[0] - center[0])
+    end_angle = math.atan2(end_point[1] - center[1], end_point[0] - center[0])
+    
+    # Handle cases where the angle should span more than 180 degrees
+    # if end_angle < start_angle:
+    #     end_angle += 2 * math.pi
+
+    theta = np.linspace(start_angle, end_angle, num_points)
+    x = center[0] + radius * np.array([math.cos(t) for t in theta])
+    y = center[1] + radius * np.array([math.sin(t) for t in theta])
+    return x, y
+
+def plot_dubins_path(start, goal, min_radius):
+    optimal_path = select_optimal_path(start, goal, min_radius)
+
+    cost, centers, angles_start, angles_goal, path_type = optimal_path
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(-70, 30)
+    ax.set_ylim(-70, 30)
+    ax.set_aspect('equal', adjustable='box')  # Ensures square axes
+    s_circle = plt.Circle((centers[0], centers[1]), min_radius, color='blue', fill=False)
+    g_circle = plt.Circle((centers[2], centers[3]), min_radius, color='red', fill=False)
+ 
+    ax.add_patch(s_circle)
+    ax.add_patch(g_circle)
+
+
+
+
+     
+    pt1=plt.scatter(start[0], start[1], color='blue',label='Initial Point')
+    pt3=plt.scatter(goal[0],goal[1],color='red',label='Final Point(absence of wind)') 
+    # plt.scatter([start[0], goal1[0]], [start[1], goal1[1]], color=['blue', 'green'])
+    # Plot the arc
+    x0, y0 = start[0], start[1]
+    x1, y1 = angles_start[2], angles_start[3]
+    x2,y2 = angles_goal[2], angles_goal[3]
+
+    x_, y_ = create_arc((centers[0], centers[1]), min_radius, (x0, y0), (x1, y1))
+    x,y = create_arc((centers[2], centers[3]), min_radius, (x2, y2), (xf, yf))
+    ax.plot(x_, y_, 'k-')
+    ax.plot(x, y, 'k-')
+
+    curve1=plt.plot([angles_start[2], angles_goal[2]], [angles_start[3], angles_goal[3]], 'k-', label='Air Path')
+ 
+ 
+
+    goal_str = f'({goal[0]:.2f}, {goal[1]:.2f}, {math.degrees(x3):.2f}deg)'
+    ax.annotate(f'Start: ({start[0]:.2f}, {start[1]:.2f}, {math.degrees(chi0):.2f}deg)\nGoal: {goal_str}', 
+                xy=(1, 1), xycoords='axes fraction', xytext=(0, -10), textcoords='offset points', ha='right', va='top', 
+                bbox=dict(boxstyle="round", fc="w"))
+    t1=plt.axvline(x=0, linestyle='--', color='gray',label='Target Line')
+    draw_arrow(ax, start, math.degrees(chi0),8, color='blue')
+    draw_arrow(ax, goal, math.degrees(final_orientation),7, color='red')
+
+   
+    plt.title(f"Dubins Path: {path_type}")
+    plt.legend()
+
+ 
+    ax.legend(handles=[curve1[0], pt1,pt3,t1], loc='upper left')
+
+    plt.show() 
+
+
+plot_dubins_path(start, goal, min_radius)
+
+
+
